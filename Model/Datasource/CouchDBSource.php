@@ -24,6 +24,11 @@ App::uses('HttpSocket', 'Network/Http');
  * @package       CouchDB.Model.Datasource
  */
 class CouchDBSource extends DataSource {
+	public $columns = array(
+		'string' => array()
+	);
+
+	public static $authorizationError = "unauthorized";
 
 /**
  * Constructor.
@@ -70,13 +75,19 @@ class CouchDBSource extends DataSource {
  */
 	public function connect() {
 		if ($this->connected !== true) {
-			if (Set::check($this->config, 'login')) {
-				$this->config = Set::insert($this->config, 'request.uri.user', Set::get($this->config, 'login'));
-			}
-
-			if (Set::check($this->config, 'password')) {
-				$this->config = Set::insert($this->config, 'request.uri.pass', Set::get($this->config, 'password'));
-			}
+			//get auth info
+			//TO-DO: use Auth
+	  	$authInfo = SessionComponent::read('TempAuth');
+	  	$login = empty($authInfo['User']['name']) ? Hash::get($this->config, 'login') : $authInfo['User']['name'];
+	  	$password = empty($authInfo['User']['password']) ? Hash::get($this->config, 'password') : $authInfo['User']['password'];
+	  	$database = empty($authInfo['User']['database']) ? Hash::get($this->config, 'database') : $authInfo['User']['database'];
+	  	//set user credentials to the config
+	  	$this->config = Hash::insert($this->config, 'login', $login);
+	  	$this->config = Hash::insert($this->config, 'request.uri.user', $login);
+	  	$this->config = Hash::insert($this->config, 'password', $password);
+	  	$this->config = Hash::insert($this->config, 'request.uri.pass', $password);
+	  	$this->config = Hash::insert($this->config, 'database', $database);
+	  	$this->config = Hash::insert($this->config, 'request.uri.database', $database);
 
 			try {
 				$this->Socket = new HttpSocket($this->config);
@@ -126,7 +137,10 @@ class CouchDBSource extends DataSource {
  * @return array Databases.
  */
 	public function listSources($data = null) {
-		return $this->__decode($this->Socket->get($this->__uri('_all_dbs')), true);
+	  //return $this->__decode($this->Socket->get($this->__uri('_all_dbs')), true);
+		//not required to get all databases, just the database to use
+		$response = $this->requestCouchDb('get', $this->config['database']);
+		return empty($response->error) ? [$this->config['database']] : [];
 	}
 
 /**
@@ -156,6 +170,10 @@ class CouchDBSource extends DataSource {
 			$data = array_combine($fields, $values);
 		}
 
+		//unset rev field due to it is a creation
+		unset($data['rev']);
+		unset($data['_rev']);
+
 		if (isset($data[$model->primaryKey]) && !empty($data[$model->primaryKey])) {
 			$params = $data[$model->primaryKey];
 			unset($data[$model->primaryKey]);
@@ -165,6 +183,7 @@ class CouchDBSource extends DataSource {
 		}
 
 		$result = $this->__decode($this->Socket->put($this->__uri($model, $params), $this->__encode($data)));
+		$model->couchDbResponse = $result;
 
 		if ($this->__checkOk($result)) {
 			$model->id = $result->id;
@@ -216,7 +235,7 @@ class CouchDBSource extends DataSource {
 		} else {
 			if (isset($queryData['conditions'][$model->alias . '.' . $model->primaryKey])) {
 				$params = $queryData['conditions'][$model->alias . '.' . $model->primaryKey];
-			} else {
+			} else if(isset($queryData['conditions'][$model->primaryKey])) {
 				$params = $queryData['conditions'][$model->primaryKey];
 			}
 
@@ -297,6 +316,7 @@ class CouchDBSource extends DataSource {
 
 		if (!empty($model->id)) {
 			$result = $this->__decode($this->Socket->put($this->__uri($model, $model->id), $this->__encode($data)));
+			$model->couchDbResponse = $result;
 
 			if ($this->__checkOk($result)) {
 				$model->rev = $result->rev;
@@ -339,9 +359,12 @@ class CouchDBSource extends DataSource {
  * @return string Last revision of the document
  */
 	private function __lastRevision(&$model, $id) {
-		$result = $this->__decode($this->Socket->get($this->__uri($model, $id)));
+		//I want CouchDB due to duplication/resolution feature. I remove this becuase it get last revision but doesn't take into account changes in that revision
+		return false;
+		
+ 		//$result = $this->__decode($this->Socket->get($this->__uri($model, $id)));
 
-		return $result->_rev;
+		//return $result->_rev;
 	}
 
 /**
@@ -357,11 +380,13 @@ class CouchDBSource extends DataSource {
 
 		if (!empty($id)) {
 			if (empty($rev)) {
-				$rev = $this->__lastRevision($model, $id);
+				return false;
+				//$rev = $this->__lastRevision($model, $id);
 			}
 
 			$idRev = $id . '/?rev=' . $rev;
 			$result = $this->__decode($this->Socket->delete($this->__uri($model, $idRev)));
+			$model->couchDbResponse = $result;
 
 			return $this->__checkOk($result);
 		}
@@ -490,7 +515,7 @@ class CouchDBSource extends DataSource {
 		if (isset($params[3])) {
 			$assoc = $params[3];
 		} else {
-			$assoc = true;
+			$assoc = false;
 		}
 
 		return array($uri, $data, $decode, $assoc);
