@@ -566,4 +566,37 @@ class CouchDBSource extends DataSource {
 	private function __checkOk($object = null) {
 		return isset($object->ok) && $object->ok === true;
 	}
+	
+/**
+ * Makes a request to CouchDb.
+ *
+ * @param $httpMethod string HTTP method for the request: GET, PUT, POST, DELETE...
+ * @param $relativeUrl string Relative path to query on the CouchDB server(i.e: _all_dbs).
+ * @param $data array Associative arrray with data to send in the request.
+ * @param $headers array Associative array with extra headers.
+ *
+ * @return Object response of CouchDB server.
+ */
+	public function requestCouchDb($httpMethod, $relativeUrl, $data = [], $headers = array(), $arrayResponse = false){
+		//encode data if it is required
+		if(empty($headers['Content-Type']) || 'application/json' == $headers['Content-Type'])
+			$data = json_encode($data);
+
+		//create request configuration
+		$request = array(
+	    'method' => strtoupper($httpMethod),
+	    'uri' => array(
+	    	'path' => $relativeUrl,
+	    	'port' => $this->config['port']
+	    ),
+	    'body' => $data,
+	    'header' => $headers
+	  );
+
+	  //makes request
+		$result = $this->Socket->request($request);
+
+		//decode response
+		return $this->__decode($result, $arrayResponse);
+	}
 }
