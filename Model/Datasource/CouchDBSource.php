@@ -274,6 +274,7 @@ class CouchDBSource extends DataSource {
 			$result[0][$model->alias]['rev'] = $result[0][$model->alias]['_rev'];
 
 			unset($result[0][$model->alias]['_id'], $result[0][$model->alias]['_rev']);
+			unset($result[0][$model->alias]['_revs_info']);
 
 			return $result;
 		} elseif (isset($result[0][$model->alias]['rows'])) {
@@ -284,6 +285,8 @@ class CouchDBSource extends DataSource {
 				$docs[$k][$model->alias]['rev'] = $doc['doc']['_rev'];
 
 				unset($doc['doc']['_id'], $doc['doc']['_rev'], $doc['doc']['id'], $doc['doc']['rev']);
+				unset($doc['doc']['_revs_info']);
+				
 
 				foreach ($doc['doc'] as $field => $value) {
 					$docs[$k][$model->alias][$field] = $value;
